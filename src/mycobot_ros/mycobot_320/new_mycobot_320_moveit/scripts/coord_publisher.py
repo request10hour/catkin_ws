@@ -14,7 +14,7 @@ class StringPublisher:
         self.xyd_pub = rospy.Publisher('xyd_topic', String, queue_size=10)
 
         # 초기 메시지 설정
-        self.xyd_msg_data = "x0.0y0.0d0.0"
+        self.xyd_msg_data = "x0.001y0.002d0.003"
 
         # 퍼블리시 빈도를 설정합니다 (예: 1초에 한 번 퍼블리시).
         self.rate = rospy.Rate(1) # 1 Hz

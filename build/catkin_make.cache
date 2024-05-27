@@ -1,0 +1,2 @@
+mycobot_ros/mycobot_320/new_mycobot_320_moveit:mycobot_ros/mycobot_description
+-DCATKIN_DEVEL_PREFIX=/home/juna/foraddy/catkin_ws/devel -DCMAKE_INSTALL_PREFIX=/home/juna/foraddy/catkin_ws/install -G Unix Makefiles
