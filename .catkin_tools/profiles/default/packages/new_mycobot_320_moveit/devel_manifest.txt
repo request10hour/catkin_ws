@@ -1,5 +1,0 @@
-mycobot_ros/mycobot_320/new_mycobot_320_moveit
-/home/hyunjang/catkin_ws/devel/.private/new_mycobot_320_moveit/cmake.lock /home/hyunjang/catkin_ws/devel/./cmake.lock
-/home/hyunjang/catkin_ws/devel/.private/new_mycobot_320_moveit/lib/pkgconfig/new_mycobot_320_moveit.pc /home/hyunjang/catkin_ws/devel/lib/pkgconfig/new_mycobot_320_moveit.pc
-/home/hyunjang/catkin_ws/devel/.private/new_mycobot_320_moveit/share/new_mycobot_320_moveit/cmake/new_mycobot_320_moveitConfig.cmake /home/hyunjang/catkin_ws/devel/share/new_mycobot_320_moveit/cmake/new_mycobot_320_moveitConfig.cmake
-/home/hyunjang/catkin_ws/devel/.private/new_mycobot_320_moveit/share/new_mycobot_320_moveit/cmake/new_mycobot_320_moveitConfig-version.cmake /home/hyunjang/catkin_ws/devel/share/new_mycobot_320_moveit/cmake/new_mycobot_320_moveitConfig-version.cmake
