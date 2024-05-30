@@ -10,7 +10,7 @@ import rospy
 from std_msgs.msg import String
 
 class MarkerDistanceCalculator:
-    def __init__(self, cam_num="/dev/video0", distance_adjustment=0.55, screen_width=640, screen_height=480, p0=5, q0=5):
+    def __init__(self, cam_num="/dev/video0", distance_adjustment=1, screen_width=640, screen_height=480, p0=5, q0=5):
         self.cam_num = cam_num
         self.distance_adjustment = distance_adjustment
         self.screen_width = screen_width
@@ -18,7 +18,7 @@ class MarkerDistanceCalculator:
         self.p0 = p0
         self.q0 = q0
 
-        self.camera_matrix = np.array([[1000, 0, screen_width], [0, 1000, screen_height], [0, 0, 1]], dtype=np.float32)
+        self.camera_matrix = np.array([[600, 0, screen_width/2], [0, 600, screen_height/2], [0, 0, 1]], dtype=np.float32)
         self.dist_coeffs = np.array([0.1, -0.05, 0, 0, 0], dtype=np.float32)
 
         self.marker_length_m = 0.04
@@ -40,6 +40,7 @@ class MarkerDistanceCalculator:
         self.real_distance_x = 0.0
         self.real_distance_y = 0.0
         self.distance_average = 0.0
+        self.pitch_average = 0.0
 
     def pixel_to_real_distance(self, pixel_distance, z, fx):
         real_distance = pixel_distance * z / fx
@@ -61,7 +62,7 @@ class MarkerDistanceCalculator:
         return np.degrees(x), np.degrees(y), np.degrees(z)
 
     def calculate_distances(self):
-        target_fps = 10.0
+        target_fps = 15.0
         frame_time = 1.0 / target_fps
 
         while True:
@@ -76,8 +77,10 @@ class MarkerDistanceCalculator:
             frame_copy = cv2.addWeighted(frame_copy, 0.7, np.zeros(frame_copy.shape, frame_copy.dtype), 0, 0)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            distance_average = 0
-            roll_average = 0
+            distances = []
+            yaws = []
+            pitches = []
+            rolls = []
 
             corners, ids, rejectedImgPoints = cv2.aruco.ArucoDetector(self.aruco_dict, self.parameters).detectMarkers(gray)
 
@@ -87,26 +90,35 @@ class MarkerDistanceCalculator:
                     success, rvec, tvec = cv2.solvePnP(self.marker_corners_3d, marker_corners_2d, self.camera_matrix, self.dist_coeffs)
 
                     if success:
-                        cv2.drawFrameAxes(frame_copy, self.camera_matrix, self.dist_coeffs, rvec, tvec, 0.02)
+                        # cv2.drawFrameAxes(frame_copy, self.camera_matrix, self.dist_coeffs, rvec, tvec, 0.02)
                         cv2.aruco.drawDetectedMarkers(frame_copy, corners)
 
                         distance = np.linalg.norm(tvec) * self.distance_adjustment
-                        distance_average = (distance_average + distance) / 2
+                        distances.append(distance)
 
                         R, _ = cv2.Rodrigues(rvec)
                         yaw, pitch, roll = self.rotation_matrix_to_euler_angles(R)
-                        roll_average = (roll_average + roll) / 2
+                        yaws.append(yaw)
+                        pitches.append(pitch)
+                        rolls.append(roll)
 
                         cv2.putText(frame_copy, f'{distance:.2f}m', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                        cv2.putText(frame_copy, f'Yaw: {yaw:.1f}', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 30),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-                        cv2.putText(frame_copy, f'Pitch: {pitch:.1f}', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 50),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
-                        cv2.putText(frame_copy, f'Roll: {roll:.1f}', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 70),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+                        # cv2.putText(frame_copy, f'Yaw: {yaw:.1f}', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 30),
+                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                        # cv2.putText(frame_copy, f'Pitch: {pitch:.1f}', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 50),
+                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
+                        # cv2.putText(frame_copy, f'Roll: {roll:.1f}', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 70),
+                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
                         
+            distance_average = np.mean(distances)
+            yaw_average = np.mean(yaws)
+            pitch_average = np.mean(pitches)
+            self.pitch_average = pitch_average
+            roll_average = np.mean(rolls)
             self.distance_average = distance_average
+            print(f'Average Distance: {distance_average:.2f} meters, Average Yaw: {yaw_average:.2f} degrees, Average Pitch: {pitch_average:.2f} degrees, Average Roll: {roll_average:.2f} degrees')
+
             results = self.model(frame)
             df = results.pandas().xyxy[0]
             fx = self.camera_matrix[0, 0]
@@ -135,8 +147,8 @@ class MarkerDistanceCalculator:
                 pixel_distance_x = cam_center_x - center_x
                 pixel_distance_y = cam_center_y - center_y
 
-                real_distance_x = self.pixel_to_real_distance(pixel_distance_x, distance_average, fx)
-                real_distance_y = self.pixel_to_real_distance(pixel_distance_y, distance_average, fx)
+                real_distance_x = self.pixel_to_real_distance(pixel_distance_x, distance_average, fx) * (1 / self.distance_adjustment)
+                real_distance_y = self.pixel_to_real_distance(pixel_distance_y, distance_average, fx) * (1 / self.distance_adjustment)
                 cv2.putText(frame_copy, f'X: {real_distance_x:.3f}m, Y: {real_distance_y:.3f}m', (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
@@ -150,7 +162,7 @@ class MarkerDistanceCalculator:
 
             cv2.putText(frame_copy, f'Average Distance = {distance_average:.2f} meters', (10, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            cv2.putText(frame_copy, f'Average Roll = {roll_average:.2f} degrees', (10, 70),
+            cv2.putText(frame_copy, f'Average Pitch = {pitch_average:.2f} degrees', (10, 70),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
             cv2.imshow('YOLOv5 Object Detection', frame_copy)
@@ -175,7 +187,7 @@ class StringPublisher:
 
         # 초기 메시지 설정
         self.calculator = calculator
-        self.xyd_msg_data = "x0.001y0.002d0.003"
+        self.xyd_msg_data = "x0.001y0.002d0.003p0.004"
 
         # 퍼블리시 빈도를 설정합니다 (예: 1초에 한 번 퍼블리시).
         self.rate = rospy.Rate(1) # 1 Hz
@@ -193,7 +205,8 @@ class StringPublisher:
             x = self.calculator.real_distance_x
             y = self.calculator.real_distance_y
             d = self.calculator.distance_average
-            self.xyd_msg_data = f"x{x:.3f}y{y:.3f}d{d:.3f}"
+            p = self.calculator.pitch_average
+            self.xyd_msg_data = f"x{x:.3f}y{y:.3f}d{d:.3f}p{p:.3f}"
 
             xyd_msg = String()
             xyd_msg.data = self.xyd_msg_data

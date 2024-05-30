@@ -111,7 +111,7 @@
       <origin xyz = "0.0 0.0 -0.1225 " rpy = " 1.5708 1.5708 0"/>
     </visual>
     <collision>
-      <origin xyz = "0.0 0.0 -0.1225 " rpy = " 1.5708 1.5708 0"/>
+      <origin xyz = "0.0 0.0 -0.1225 " rpy = " 0 0 3.14"/>
       <geometry>
         <cylinder length="0.245" radius="0.03"/>
       </geometry>

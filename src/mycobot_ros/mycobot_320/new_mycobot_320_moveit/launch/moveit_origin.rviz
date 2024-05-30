@@ -111,9 +111,9 @@ Visualization Manager:
             Show Trail: false
             Value: true
         Loop Animation: false
-        Robot Alpha: 1
-        Robot Color: 240; 240; 220
-        Show Robot Collision: true
+        Robot Alpha: 0.5
+        Robot Color: 150; 50; 150
+        Show Robot Collision: false
         Show Robot Visual: true
         Show Trail: false
         State Display Time: 0.05 s
@@ -134,8 +134,8 @@ Visualization Manager:
         Interactive Marker Size: 0
         Joint Violation Color: 255; 0; 255
         Planning Group: arm_group
-        Query Goal State: false
-        Query Start State: false
+        Query Goal State: true
+        Query Start State: true
         Show Workspace: false
         Start State Alpha: 1
         Start State Color: 0; 255; 0
@@ -143,13 +143,13 @@ Visualization Manager:
       Robot Description: robot_description
       Scene Geometry:
         Scene Alpha: 1
-        Scene Color: 50; 140; 255
+        Scene Color: 50; 230; 50
         Scene Display Time: 0.20000000298023224
         Show Scene Geometry: true
         Voxel Coloring: Z-Axis
         Voxel Rendering: Occupied Voxels
       Scene Robot:
-        Attached Body Color: 255; 10; 50
+        Attached Body Color: 150; 50; 150
         Links:
           All Links Enabled: true
           Expand Joint Details: false
@@ -193,7 +193,7 @@ Visualization Manager:
             Value: true
         Robot Alpha: 0.5
         Show Robot Collision: false
-        Show Robot Visual: ture
+        Show Robot Visual: false
       Value: true
       Velocity_Scaling_Factor: 0.5000000000000001
     - Class: rviz/TF
