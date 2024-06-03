@@ -21,7 +21,7 @@ class MarkerDistanceCalculator:
         self.camera_matrix = np.array([[600, 0, screen_width/2], [0, 600, screen_height/2], [0, 0, 1]], dtype=np.float32)
         self.dist_coeffs = np.array([0.1, -0.05, 0, 0, 0], dtype=np.float32)
 
-        self.marker_length_m = 0.04
+        self.marker_length_m = 0.044
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_250)
         self.parameters = cv2.aruco.DetectorParameters()
 
@@ -110,7 +110,7 @@ class MarkerDistanceCalculator:
                         #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
                         # cv2.putText(frame_copy, f'Roll: {roll:.1f}', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 70),
                         #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-                        
+
             distance_average = np.mean(distances)
             yaw_average = np.mean(yaws)
             pitch_average = np.mean(pitches)

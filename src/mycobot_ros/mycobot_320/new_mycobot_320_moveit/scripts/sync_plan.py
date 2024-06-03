@@ -21,6 +21,7 @@ def callback(data):
 
     rospy.loginfo(rospy.get_caller_id() + "%s", data_list)
     mc.send_angles(data_list, 40)
+    mc.set_basic_output(6, 0)
 
 
 def listener():

@@ -63,8 +63,10 @@ if __name__ == '__main__':
 
         default_xyz = [0.0, -0.1, 0.4]
 
-        posestamped.pose.position.x = default_xyz[0] + x
-        posestamped.pose.position.y = default_xyz[1] - d
+        print("asd", p)
+
+        posestamped.pose.position.x = default_xyz[0] + x * sin(p)
+        posestamped.pose.position.y = default_xyz[1] - d * cos(-p)
         posestamped.pose.position.z = default_xyz[2] + y
 
         # convert euler angles to quaternion
