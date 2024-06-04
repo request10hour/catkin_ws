@@ -10,7 +10,7 @@ import rospy
 from std_msgs.msg import String
 
 class MarkerDistanceCalculator:
-    def __init__(self, cam_num="/dev/video0", distance_adjustment=1.0, screen_width=640, screen_height=480, p0=3, q0=5):
+    def __init__(self, cam_num="/dev/video0", distance_adjustment=1.0, screen_width=640, screen_height=480, p0=5, q0=5):
         self.cam_num = cam_num
         self.distance_adjustment = distance_adjustment
         self.screen_width = screen_width
@@ -21,7 +21,7 @@ class MarkerDistanceCalculator:
         self.camera_matrix = np.array([[450, 0, screen_width/2], [0, 450, screen_height/2], [0, 0, 1]], dtype=np.float32)
         self.dist_coeffs = np.array([0.1, -0.05, 0, 0, 0], dtype=np.float32)
 
-        self.marker_length_m = 0.044
+        self.marker_length_m = 0.045
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_250)
         self.parameters = cv2.aruco.DetectorParameters()
 
@@ -39,7 +39,8 @@ class MarkerDistanceCalculator:
 
         self.real_distance_x = 0.0
         self.real_distance_y = 0.0
-        self.distance_average = 0.0
+        # self.distance_average = 0.0
+        self.distance_center = 0.0
         self.pitch_average = 0.0
 
     def pixel_to_real_distance(self, pixel_distance, z, fx):
@@ -77,10 +78,11 @@ class MarkerDistanceCalculator:
             frame_copy = cv2.addWeighted(frame_copy, 0.7, np.zeros(frame_copy.shape, frame_copy.dtype), 0, 0)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            distances = []
+            # distances = []
             yaws = []
             pitches = []
             rolls = []
+            distance_region_arr = np.zeros((4, 4, 2))
 
             corners, ids, rejectedImgPoints = cv2.aruco.ArucoDetector(self.aruco_dict, self.parameters).detectMarkers(gray)
 
@@ -94,7 +96,7 @@ class MarkerDistanceCalculator:
                         cv2.aruco.drawDetectedMarkers(frame_copy, corners)
 
                         distance = np.linalg.norm(tvec) * self.distance_adjustment
-                        distances.append(distance)
+                        # distances.append(distance)
 
                         R, _ = cv2.Rodrigues(rvec)
                         yaw, pitch, roll = self.rotation_matrix_to_euler_angles(R)
@@ -104,20 +106,55 @@ class MarkerDistanceCalculator:
 
                         cv2.putText(frame_copy, f'{distance:.3f}m', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                        # cv2.putText(frame_copy, f'Yaw: {yaw:.1f}', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 30),
-                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-                        # cv2.putText(frame_copy, f'Pitch: {pitch:.1f}', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 50),
-                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
-                        # cv2.putText(frame_copy, f'Roll: {roll:.1f}', (int(marker_corners_2d[0][0]), int(marker_corners_2d[0][1]) - 70),
-                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
 
-            distance_average = np.mean(distances)
+                        # divide screen with 16 regions(4 * 4) and make array for them.
+                        # if bounding box of marker is in specific region, add distance and count(how many bounding box included) in that region.
+                        for j in range(4):
+                            for k in range(4):
+                                if marker_corners_2d[0][0] >= self.screen_width * j / 4 and marker_corners_2d[0][0] < self.screen_width * (j + 1) / 4 and marker_corners_2d[0][1] >= self.screen_height * k / 4 and marker_corners_2d[0][1] < self.screen_height * (k + 1) / 4:
+                                    distance_region_arr[j][k][0] += distance
+                                    distance_region_arr[j][k][1] += 1
+
+            # calculate average if there are more than 1 bounding box in the region.
+            avrdist_region_arr = np.zeros((4, 4))
+            for j in range(4):
+                for k in range(4):
+                    if distance_region_arr[j][k][1] != 0:
+                        avrdist_region_arr[j][k] = distance_region_arr[j][k][0] / distance_region_arr[j][k][1]
+
+            # distance_average = np.mean(distances)
             yaw_average = np.mean(yaws)
             pitch_average = np.mean(pitches)
             self.pitch_average = pitch_average
             roll_average = np.mean(rolls)
-            self.distance_average = distance_average
-            print(f'Average Distance: {distance_average:.2f} meters, Average Yaw: {yaw_average:.2f} degrees, Average Pitch: {pitch_average:.2f} degrees, Average Roll: {roll_average:.2f} degrees')
+            # self.distance_average = distance_average
+
+            # predict distance of the region which has no bounding box. maybe with rpy. at least one value is available
+            new_avrdist_region_arr = np.zeros((4, 4))
+            for j in range(4):
+                for k in range(4):
+                    if avrdist_region_arr[j][k] == 0:
+                        # search nearest region which has distance value
+                        min_dist = 1000
+                        for l in range(4):
+                            for m in range(4):
+                                if avrdist_region_arr[l][m] != 0:
+                                    dist = np.sqrt((j - l) ** 2 + (k - m) ** 2)
+                                    if dist < min_dist:
+                                        min_dist = dist
+                                        new_avrdist_region_arr[j][k] = avrdist_region_arr[l][m]
+                    else:
+                        new_avrdist_region_arr[j][k] = avrdist_region_arr[j][k]
+
+            # draw with new_avrdist_region_arr, rectangle and puttext on screen
+            for j in range(4):
+                for k in range(4):
+                    if new_avrdist_region_arr[j][k] != 0:
+                        cv2.rectangle(frame_copy, (self.screen_width * j // 4, self.screen_height * k // 4), (self.screen_width * (j + 1) // 4, self.screen_height * (k + 1) // 4), (0, 255, 255), 2)
+                        cv2.putText(frame_copy, f'{new_avrdist_region_arr[j][k]:.3f}m', (self.screen_width * j // 4, self.screen_height * k // 4 + 20),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+            # print(f'Average Distance: {distance_average:.2f} meters, Average Yaw: {yaw_average:.2f} degrees, Average Pitch: {pitch_average:.2f} degrees, Average Roll: {roll_average:.2f} degrees')
 
             results = self.model(frame)
             df = results.pandas().xyxy[0]
@@ -138,6 +175,12 @@ class MarkerDistanceCalculator:
                 center_x = int((q1 * x1 + self.q0 * x2) / 10)
                 p1 = 10 - self.p0
                 center_y = int((p1 * y1 + self.p0 * y2) / 10)
+
+                # get center point distance with new_avrdist_region_arr
+                for j in range(4):
+                    for k in range(4):
+                        if center_x >= self.screen_width * j / 4 and center_x < self.screen_width * (j + 1) / 4 and center_y >= self.screen_height * k / 4 and center_y < self.screen_height * (k + 1) / 4:
+                            self.distance_center = new_avrdist_region_arr[j][k]
 
                 # Draw border warning
                 border_message = "Border Detected: "
@@ -160,8 +203,8 @@ class MarkerDistanceCalculator:
                 pixel_distance_x = cam_center_x - center_x
                 pixel_distance_y = cam_center_y - center_y
 
-                real_distance_x = self.pixel_to_real_distance(pixel_distance_x, distance_average, fx) * (1 / self.distance_adjustment)
-                real_distance_y = self.pixel_to_real_distance(pixel_distance_y, distance_average, fx) * (1 / self.distance_adjustment)
+                real_distance_x = self.pixel_to_real_distance(pixel_distance_x, self.distance_center, fx) * (1 / self.distance_adjustment)
+                real_distance_y = self.pixel_to_real_distance(pixel_distance_y, self.distance_center, fx) * (1 / self.distance_adjustment)
                 cv2.putText(frame_copy, f'X: {real_distance_x:.3f}m, Y: {real_distance_y:.3f}m', (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
@@ -188,7 +231,7 @@ class MarkerDistanceCalculator:
                 cv2.putText(frame_copy, f'Direction: {direction.strip()}', (10, 130),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-            cv2.putText(frame_copy, f'Average Distance = {distance_average:.2f} meters', (10, 50),
+            cv2.putText(frame_copy, f'Center Distance = {self.distance_center:.2f} meters', (10, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
             cv2.putText(frame_copy, f'Average Pitch = {pitch_average:.2f} degrees', (10, 70),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
@@ -232,7 +275,7 @@ class StringPublisher:
             # 실시간으로 업데이트된 메시지를 생성합니다.
             x = self.calculator.real_distance_x
             y = self.calculator.real_distance_y
-            d = self.calculator.distance_average
+            d = self.calculator.distance_center
             p = self.calculator.pitch_average
             self.xyd_msg_data = f"x{x:.3f}y{y:.3f}d{d:.3f}p{p:.3f}"
 
@@ -259,7 +302,7 @@ if __name__ == "__main__":
 
         while yolothread.is_alive():
             time.sleep(0.5)
-            print(f'Real Distance X: {calculator.real_distance_x:.3f}m, Real Distance Y: {calculator.real_distance_y:.3f}m, Average Distance: {calculator.distance_average:.3f}m')
+            print(f'Real Distance X: {calculator.real_distance_x:.3f}m, Real Distance Y: {calculator.real_distance_y:.3f}m, Average Distance: {calculator.distance_center:.3f}m')
 
         publisher.stop()
     except rospy.ROSInterruptException:

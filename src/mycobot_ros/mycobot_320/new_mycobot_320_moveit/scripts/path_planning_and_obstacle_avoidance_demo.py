@@ -52,6 +52,7 @@ if __name__ == '__main__':
     box_co = None
     a4_co = None
     sphere_co = None
+    sphere_temp = None
 
     while 1 :
         rospy.init_node('arm_controller_node', anonymous=True)
@@ -65,7 +66,7 @@ if __name__ == '__main__':
 
         print("asd", p)
 
-        posestamped.pose.position.x = default_xyz[0] + x * sin(p)
+        posestamped.pose.position.x = default_xyz[0] + x - (x * sin(p))
         posestamped.pose.position.y = default_xyz[1] - d * cos(-p)
         posestamped.pose.position.z = default_xyz[2] + y
 
@@ -84,16 +85,22 @@ if __name__ == '__main__':
         posestamped.pose.orientation.z = sy * cr * cp - cy * sr * sp   # z
         posestamped.pose.orientation.w = cy * cr * cp + sy * sr * sp   # w
 
+        posestamped_temp = copy.deepcopy(posestamped)
+        posestamped_temp.pose.position.x = posestamped_temp.pose.position.x - 0.15 * sin(p)
+        posestamped_temp.pose.position.y = posestamped_temp.pose.position.y + 0.15 * cos(p)
+
         posestamped_add_distance = copy.deepcopy(posestamped)
         posestamped_add_distance.pose.position.y -= 0.01
 
-        if (box_co is None or a4_co is None or sphere_co is None):
+        if (box_co is None or a4_co is None or sphere_co is None or sphere_temp is None):
             box_co = make_object(posestamped_add_distance, SolidPrimitive.BOX, [0.297 * 2, 0.21 * 2, 0.001], "box")
             a4_co = make_object(posestamped, SolidPrimitive.BOX, [0.297, 0.21, 0.001], "a4")
             sphere_co = make_object(posestamped, SolidPrimitive.SPHERE, [0.025], "sphere")
+            sphere_temp = make_object(posestamped_temp, SolidPrimitive.SPHERE, [0.025], "sphere_temp")
         else:
             move_object(box_co, posestamped_add_distance)
             move_object(a4_co, posestamped)
             move_object(sphere_co, posestamped)
+            move_object(sphere_temp, posestamped_temp)
 
         rospy.sleep(0.5)

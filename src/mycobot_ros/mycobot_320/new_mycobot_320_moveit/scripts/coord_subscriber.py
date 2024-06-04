@@ -9,7 +9,7 @@ from moveit_commander import RobotCommander, PlanningSceneInterface, MoveGroupCo
 from moveit_msgs.msg import CollisionObject
 from shape_msgs.msg import SolidPrimitive
 from rosgraph.names import ns_join
-from math import sin, cos, radians
+from math import sin, cos, radians, sqrt
 import copy
 
 class ArmController:
@@ -23,9 +23,6 @@ class ArmController:
             ns_join("", "collision_object"), CollisionObject, queue_size=100
         )
 
-        self.planningscene.remove_attached_object()
-        self.planningscene.remove_world_object()
-
         self.box_co = None
         self.a4_co = None
         self.sphere_co = None
@@ -33,7 +30,7 @@ class ArmController:
         # 관절 및 위치/자세 허용 오차를 설정합니다.
         self.arm.set_goal_position_tolerance(0.01) # 2cm
         self.arm.set_goal_orientation_tolerance(0.05) # 3 degrees
-        self.distance_from_socket = 0.11
+        self.distance_from_socket = 0.12
 
         self.default_xyz = [0.0, -0.1, 0.35]
 
@@ -48,6 +45,9 @@ class ArmController:
         # 목표를 초기화합니다.
         self.arm.stop()
         self.arm.clear_pose_targets()
+
+        self.planningscene.remove_attached_object()
+        self.planningscene.remove_world_object()
         rospy.sleep(10)
         self.callbacking = False
 
@@ -73,9 +73,9 @@ class ArmController:
 
             print(p)
 
-            self.default_xyz[0] = float(pose_all.pose.position.x) + self.distance_from_socket * sin(radians(p))
-            self.default_xyz[1] = ((-0.1) / cos(radians(p))) + (float(pose_all.pose.position.y) + self.distance_from_socket) * cos(radians(p))
-            self.default_xyz[2] = float(pose_all.pose.position.z)
+            self.default_xyz[0] = pose_all.pose.position.x
+            self.default_xyz[1] = pose_all.pose.position.y
+            self.default_xyz[2] = pose_all.pose.position.z
             print(self.default_xyz)
 
             self.arm.set_pose_target(self.default_xyz + [-1.57, 0.0, move_rad], end_effector_link="link6")
@@ -116,8 +116,8 @@ class ArmController:
 
         default_xyz = [0.0, -0.1, 0.35]
 
-        posestamped.pose.position.x = default_xyz[0] + x - (x * sin(p))
-        posestamped.pose.position.y = default_xyz[1] - d * cos(-p)
+        posestamped.pose.position.x = default_xyz[0] + x - (x * sin(abs(p)))
+        posestamped.pose.position.y = default_xyz[1] - sqrt(d**2 - x**2)
         posestamped.pose.position.z = default_xyz[2] + y
 
         # convert euler angles to quaternion
@@ -140,16 +140,22 @@ class ArmController:
         posestamped_add_distance = copy.deepcopy(posestamped)
         posestamped_add_distance.pose.position.y -= 0.01
 
+        posestamped_temp = copy.deepcopy(posestamped)
+        posestamped_temp.pose.position.x = posestamped_temp.pose.position.x - 0.10 * sin(p)
+        posestamped_temp.pose.position.y = posestamped_temp.pose.position.y + 0.10 * cos(p)
+
         if (box_co is None or a4_co is None or sphere_co is None):
             box_co = self.make_object(posestamped_add_distance, SolidPrimitive.BOX, [0.297 * 2, 0.21 * 2, 0.001], "box")
             a4_co = self.make_object(posestamped, SolidPrimitive.BOX, [0.297, 0.21, 0.001], "a4")
             sphere_co = self.make_object(posestamped, SolidPrimitive.SPHERE, [0.025], "sphere")
+            rospy.sleep(1)
         else:
             self.move_object(box_co, posestamped_add_distance)
             self.move_object(a4_co, posestamped)
             self.move_object(sphere_co, posestamped)
+            rospy.sleep(1)
 
-        return posestamped
+        return posestamped_temp
 
 if __name__ == '__main__':
     try:
