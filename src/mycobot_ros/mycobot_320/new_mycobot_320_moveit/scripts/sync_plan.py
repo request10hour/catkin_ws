@@ -5,12 +5,17 @@ import math
 import subprocess
 import rospy
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Int32
 
 from pymycobot.mycobot import MyCobot
 
 
 mc = None
+ee_option = 1
 
+def ee_callback(data):
+    global ee_option
+    ee_option = data.data
 
 def callback(data):
     # rospy.loginfo(rospy.get_caller_id() + "%s", data)
@@ -21,12 +26,14 @@ def callback(data):
 
     rospy.loginfo(rospy.get_caller_id() + "%s", data_list)
     mc.send_angles(data_list, 40)
-    mc.set_basic_output(6, 0)
+
+    mc.set_basic_output(6, int(ee_option))
 
 
 def listener():
     global mc
     rospy.init_node("mycobot_reciver", anonymous=True)
+    rospy.Subscriber('ee_topic', Int32, ee_callback)
 
     # scan the port
     res = None

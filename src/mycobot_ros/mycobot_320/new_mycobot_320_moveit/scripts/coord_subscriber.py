@@ -3,7 +3,7 @@
 
 from pymycobot import MyCobot
 import rospy
-from std_msgs.msg import String
+from std_msgs.msg import String, Int32
 import moveit_commander
 from moveit_commander import RobotCommander, PlanningSceneInterface, MoveGroupCommander
 from moveit_msgs.msg import CollisionObject
@@ -32,12 +32,16 @@ class ArmController:
         self.arm.set_goal_orientation_tolerance(0.05) # 3 degrees
         self.distance_from_socket = 0.12
 
-        self.default_xyz = [0.0, -0.1, 0.35]
+        self.default_xyz = [0.0, -0.11, 0.35]
+        self.default_xyz2 = [0.0, -0.11, 0.35]
 
         # ROS 노드를 초기화하고 토픽을 구독합니다.
         self.callbacking = True
         rospy.init_node('arm_controller_node', anonymous=True)
+
         rospy.Subscriber('xyd_topic', String, self.xyd_callback)
+        self.eepub = rospy.Publisher('ee_topic', Int32, queue_size=10)
+        self.eepub.publish(1)
 
         self.arm.set_pose_target(self.default_xyz + [-1.57, 0.0, -3.14], end_effector_link="link6")
         self.arm.plan()
@@ -48,37 +52,73 @@ class ArmController:
 
         self.planningscene.remove_attached_object()
         self.planningscene.remove_world_object()
-        rospy.sleep(10)
+        rospy.sleep(5)
         self.callbacking = False
 
+        self.bungijum = 0
+        self.save_pitch = 0
+        self.move_rad = 0
+
     def xyd_callback(self, msg):
-        print("Callback")
+        print("Waiting for callback")
         if not self.callbacking:
             self.callbacking = True
-            self.update_arm_position(msg.data)
+            if self.bungijum == 0:
+                self.update_arm_position(msg.data)
+                self.bungijum += 1
+            elif self.bungijum == 1:
+                self.move_forward(msg.data)
+                self.bungijum += 1
+            elif self.bungijum == 2:
+                self.eepub.publish(0)
+                rospy.sleep(10)
+                self.callbacking = False
+                self.bungijum += 1
+            elif self.bungijum == 3:
+                self.eepub.publish(1)
+                rospy.sleep(5)
+
+                self.arm.set_pose_target(self.default_xyz2 + [-1.57, 0.0, -3.14], end_effector_link="link6")
+                self.arm.plan()
+                self.arm.go(wait=True)
+
+                # 목표를 초기화합니다.
+                self.arm.stop()
+                self.arm.clear_pose_targets()
+
+                rospy.sleep(10)
+                self.callbacking = False
+                self.bungijum += 1
+            elif self.bungijum == 4:
+                rospy.signal_shutdown("shutdown")
+
 
     def update_arm_position(self, xyd_str):
         try:
             # xyd_str을 파싱하여 목표 위치를 설정합니다.
-            x_str, y_str, d_str, p_str = xyd_str.split('y')[0], xyd_str.split('y')[1].split('d')[0], xyd_str.split('d')[1].split('p')[0], xyd_str.split('p')[1]
+            x_str, y_str, d_str, p_str, f_str, r_str = xyd_str.split('y')[0], xyd_str.split('y')[1].split('d')[0], \
+                xyd_str.split('d')[1].split('p')[0], xyd_str.split('p')[1].split('f')[0], xyd_str.split('f')[1].split('r')[0], xyd_str.split('r')[1]
+
             x, y, d, p = float(x_str[1:]), float(y_str), float(d_str), float(p_str)
             print(f"Received new position: x={x}, y={y}, d={d}, p={p}")
+            self.save_pitch = p
 
             pose_all = self.object_control(self.robotcommander, self.box_co, self.a4_co, self.sphere_co, x, d, y, -radians(p))
 
             # print(arm.get_current_rpy("link6"))
             p_rad = p * 3.1415 / 180
             minus = -1 if p_rad < 0 else 1
-            move_rad = (3.1415 - abs(p_rad)) * minus
+            self.move_rad = (3.1415 - abs(p_rad)) * minus
 
             print(p)
 
-            self.default_xyz[0] = pose_all.pose.position.x
-            self.default_xyz[1] = pose_all.pose.position.y
+            self.default_xyz[0] = self.default_xyz[0] - float(r_str) * 0.8
+            self.default_xyz[1] = self.default_xyz[1] - float(f_str) * 0.8
             self.default_xyz[2] = pose_all.pose.position.z
-            print(self.default_xyz)
 
-            self.arm.set_pose_target(self.default_xyz + [-1.57, 0.0, move_rad], end_effector_link="link6")
+            print("step1: ",self.default_xyz + [-1.57, 0.0, self.move_rad])
+
+            self.arm.set_pose_target(self.default_xyz + [-1.57, 0.0, self.move_rad], end_effector_link="link6")
             self.arm.plan()
             self.arm.go(wait=True)
 
@@ -89,7 +129,30 @@ class ArmController:
             rospy.logerr(f"Failed to update arm position: {e}")
         finally:
             rospy.sleep(5)
-            rospy.signal_shutdown("User requested shutdown")
+            self.callbacking = False
+
+    def move_forward(self, xyd_str):
+        try:
+            x_str, y_str, d_str, p_str, f_str, r_str = xyd_str.split('y')[0], xyd_str.split('y')[1].split('d')[0], \
+                xyd_str.split('d')[1].split('p')[0], xyd_str.split('p')[1].split('f')[0], xyd_str.split('f')[1].split('r')[0], xyd_str.split('r')[1]
+            d = float(d_str)
+
+            self.default_xyz[0] = self.default_xyz[0] - (d - 0.15) * sin(radians(self.save_pitch))
+            self.default_xyz[1] = self.default_xyz[1] - (d - 0.15) * cos(radians(self.save_pitch))
+
+            print("step2: ",self.default_xyz + [-1.57, 0.0, self.move_rad])
+            self.arm.set_pose_target(self.default_xyz + [-1.57, 0.0, self.move_rad], end_effector_link="link6")
+            self.arm.plan()
+            self.arm.go(wait=True)
+
+            # 목표를 초기화합니다.
+            self.arm.stop()
+            self.arm.clear_pose_targets()
+        except Exception as e:
+            rospy.logerr(f"Failed to update arm position: {e}")
+        finally:
+            rospy.sleep(5)
+            self.callbacking = False
 
     def make_object(self, posestamped : moveit_commander.PoseStamped, shape_type, shape_dimensions, id):
         co = CollisionObject()
@@ -114,7 +177,7 @@ class ArmController:
         posestamped = moveit_commander.PoseStamped()
         posestamped.header.frame_id = robotcommander.get_planning_frame()
 
-        default_xyz = [0.0, -0.1, 0.35]
+        default_xyz = [0.0, -0.11, 0.35]
 
         posestamped.pose.position.x = default_xyz[0] + x - (x * sin(abs(p)))
         posestamped.pose.position.y = default_xyz[1] - sqrt(d**2 - x**2)
